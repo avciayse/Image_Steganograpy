@@ -1,0 +1,211 @@
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <iostream>
+#include <fstream>
+#include <bitset>
+#include <string>
+
+using namespace cv;
+using namespace std;
+
+class Steganography {
+public:
+    void mainMenu();
+    void analyzeImages();
+    void histogramDifference();
+    void compareHistograms(const string& imagePath1, const string& imagePath2);
+    void plotHistogramDifference(const string& imagePath1, const string& imagePath2);
+    void encodeMessage(const string& imagePath, const string& message);
+    string decodeMessage(const string& imagePath);
+
+private:
+    void printPixelBitsToFile(const Mat& image, const string& outputFile);
+    void modifyPixelData(Mat& image, const string& data);
+    vector<bitset<8>> generateBinaryData(const string& data);
+};
+
+void Steganography::mainMenu() {
+    int choice;
+    cout << "\nLSB Steganography Main Menu" << endl;
+    cout << "1. Analyze Images" << endl;
+    cout << "2. Histogram Difference" << endl;
+    cout << "3. Encode Message in Image" << endl;
+    cout << "4. Decode Message from Image" << endl;
+    cout << "0. Exit" << endl;
+    cin >> choice;
+    
+    switch (choice) {
+        case 1:
+            analyzeImages();
+            break;
+        case 2:
+            histogramDifference();
+            break;
+        case 3: {
+            string imagePath, message;
+            cout << "Enter image path: ";
+            cin >> imagePath;
+            cout << "Enter message: ";
+            cin.ignore();
+            getline(cin, message);
+            encodeMessage(imagePath, message);
+            break;
+        }
+        case 4: {
+            string imagePath;
+            cout << "Enter image path: ";
+            cin >> imagePath;
+            string message = decodeMessage(imagePath);
+            cout << "Decoded message: " << message << endl;
+            break;
+        }
+        case 0:
+            cout << "Exiting program." << endl;
+            return;
+        default:
+            cout << "Invalid choice. Try again." << endl;
+            mainMenu();
+            break;
+    }
+}
+
+void Steganography::analyzeImages() {
+    string imagePath1, imagePath2;
+    cout << "Enter path for Image 1: ";
+    cin >> imagePath1;
+    cout << "Enter path for Image 2: ";
+    cin >> imagePath2;
+    compareHistograms(imagePath1, imagePath2);
+}
+
+void Steganography::histogramDifference() {
+    string imagePath1, imagePath2;
+    cout << "Enter path for Image 1: ";
+    cin >> imagePath1;
+    cout << "Enter path for Image 2: ";
+    cin >> imagePath2;
+    plotHistogramDifference(imagePath1, imagePath2);
+}
+
+void Steganography::compareHistograms(const string& imagePath1, const string& imagePath2) {
+    Mat image1 = imread(imagePath1, IMREAD_GRAYSCALE);
+    Mat image2 = imread(imagePath2, IMREAD_GRAYSCALE);
+
+    if (image1.empty() || image2.empty()) {
+        cerr << "Error: One or both images could not be loaded." << endl;
+        return;
+    }
+
+    Mat hist1, hist2;
+    int histSize = 256;
+    float range[] = { 0, 256 };
+    const float* histRange = { range };
+
+    calcHist(&image1, 1, 0, Mat(), hist1, 1, &histSize, &histRange);
+    calcHist(&image2, 1, 0, Mat(), hist2, 1, &histSize, &histRange);
+
+    double chisq = compareHist(hist1, hist2, HISTCMP_CHISQR);
+    cout << "Chi-Square Distance: " << chisq << endl;
+}
+
+void Steganography::plotHistogramDifference(const string& imagePath1, const string& imagePath2) {
+    Mat image1 = imread(imagePath1, IMREAD_GRAYSCALE);
+    Mat image2 = imread(imagePath2, IMREAD_GRAYSCALE);
+
+    if (image1.empty() || image2.empty()) {
+        cerr << "Error: One or both images could not be loaded." << endl;
+        return;
+    }
+
+    Mat hist1, hist2;
+    int histSize = 256;
+    float range[] = { 0, 256 };
+    const float* histRange = { range };
+
+    calcHist(&image1, 1, 0, Mat(), hist1, 1, &histSize, &histRange);
+    calcHist(&image2, 1, 0, Mat(), hist2, 1, &histSize, &histRange);
+
+    Mat histDiff = hist1 - hist2;
+
+    namedWindow("Histogram Difference", WINDOW_NORMAL);
+    imshow("Histogram Difference", histDiff);
+    waitKey(0);
+    destroyWindow("Histogram Difference");
+}
+
+void Steganography::encodeMessage(const string& imagePath, const string& message) {
+    Mat image = imread(imagePath, IMREAD_COLOR);
+    if (image.empty()) {
+        cerr << "Error: Could not load the image." << endl;
+        return;
+    }
+    
+    vector<bitset<8>> data = generateBinaryData(message);
+    modifyPixelData(image, message);
+    
+    string outputPath = "encoded_image.png";
+    imwrite(outputPath, image);
+    cout << "Message encoded successfully and saved as: " << outputPath << endl;
+}
+
+string Steganography::decodeMessage(const string& imagePath) {
+    Mat image = imread(imagePath, IMREAD_COLOR);
+    if (image.empty()) {
+        cerr << "Error: Could not load the image." << endl;
+        return "";
+    }
+
+    string message;
+    vector<bitset<8>> binaryData;
+
+    for (int y = 0; y < image.rows; ++y) {
+        for (int x = 0; x < image.cols; ++x) {
+            Vec3b pixel = image.at<Vec3b>(y, x);
+            bitset<8> bits;
+            for (int c = 0; c < 3; ++c) {
+                bits[c] = pixel[c] & 1;
+            }
+            binaryData.push_back(bits);
+        }
+    }
+    
+    for (const auto& bits : binaryData) {
+        char character = static_cast<char>(bits.to_ulong());
+        if (character == '\0') break;
+        message += character;
+    }
+    
+    return message;
+}
+
+vector<bitset<8>> Steganography::generateBinaryData(const string& data) {
+    vector<bitset<8>> binaryData;
+    for (char c : data) {
+        binaryData.push_back(bitset<8>(c));
+    }
+    return binaryData;
+}
+
+void Steganography::modifyPixelData(Mat& image, const string& data) {
+    vector<bitset<8>> binaryData = generateBinaryData(data);
+
+    int idx = 0;
+    for (int y = 0; y < image.rows; ++y) {
+        for (int x = 0; x < image.cols; ++x) {
+            Vec3b& pixel = image.at<Vec3b>(y, x);
+            for (int c = 0; c < 3; ++c) {
+                if (idx < binaryData.size() * 8) {
+                    int bitIndex = idx % 8;
+                    pixel[c] = (pixel[c] & ~1) | binaryData[idx / 8][bitIndex];
+                    ++idx;
+                }
+            }
+        }
+    }
+}
+
+int main() {
+    Steganography steg;
+    steg.mainMenu();
+    return 0;
+}
